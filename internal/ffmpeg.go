@@ -68,11 +68,17 @@ func CutSegments(videoPath string, cutSegments []Segment, outputPath string) err
 	var segFiles []string
 	for i, seg := range keepSegments {
 		segFile := filepath.Join(tmpDir, fmt.Sprintf("seg%d.mp4", i))
+		// -ss/-t를 -i 앞이 아니라 입력 seek + 출력 duration 조합으로 사용한다.
+		// -ss(입력측)는 빠르게 시작점으로 이동하고, -t는 "그 지점부터의 길이"라
+		// ffmpeg 버전별로 의미가 달라지는 -to(타임라인 기준)의 모호함을 피한다.
+		// 키프레임 경계가 아닌 곳에서 정확히 자르기 위해 재인코딩한다(스트림 copy는
+		// 키프레임 단위로만 잘려 구간이 어긋남).
 		cmd := exec.Command("ffmpeg", "-y",
 			"-ss", formatTime(seg.Start),
-			"-to", formatTime(seg.End),
 			"-i", videoPath,
-			"-c", "copy",
+			"-t", formatTime(seg.End-seg.Start),
+			"-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+			"-c:a", "aac",
 			segFile,
 		)
 		if out, err := cmd.CombinedOutput(); err != nil {

@@ -1,13 +1,10 @@
 package internal
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
-
-	openai "github.com/sashabaranov/go-openai"
 )
 
 type SubtitleEntry struct {
@@ -49,40 +46,12 @@ const subtitlePrompt = `당신은 유튜브 영상 자막 전문가입니다.
 응답은 반드시 JSON만 반환하세요.`
 
 func GetSubtitleSuggestions(transcript *Transcript) (*SubtitleSuggestion, error) {
-	apiKey := os.Getenv("DEEPSEEK_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("DEEPSEEK_API_KEY 환경변수가 필요합니다")
-	}
-
-	cfg := openai.DefaultConfig(apiKey)
-	cfg.BaseURL = "https://api.deepseek.com/v1"
-	client := openai.NewClientWithConfig(cfg)
-
 	userMsg := fmt.Sprintf("다음 자막 원본을 분석해서 최적화된 자막을 만들어주세요:\n\n%s", transcript.FormatForAI())
 
-	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model: "deepseek-chat",
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: subtitlePrompt},
-			{Role: openai.ChatMessageRoleUser, Content: userMsg},
-		},
-		Temperature: 0.3,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("자막 분석 실패: %v", err)
-	}
-
-	content := strings.TrimSpace(resp.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
 	var suggestion SubtitleSuggestion
-	if err := json.Unmarshal([]byte(content), &suggestion); err != nil {
-		return nil, fmt.Errorf("자막 응답 파싱 실패: %v\n응답: %s", err, content)
+	if err := callAI(subtitlePrompt, userMsg, &suggestion); err != nil {
+		return nil, err
 	}
-
 	return &suggestion, nil
 }
 
@@ -100,8 +69,18 @@ func GenerateSRT(entries []SubtitleEntry, outputPath string) error {
 // BurnSubtitles burns SRT subtitles into the video using ffmpeg
 func BurnSubtitles(videoPath, srtPath, outputPath string) error {
 	// Use subtitles filter; emphasis style can't easily be per-entry with basic SRT,
-	// so we burn with a clean style
-	filter := fmt.Sprintf("subtitles='%s':force_style='FontSize=22,FontName=Arial,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Alignment=2'", srtPath)
+	// so we burn with a clean style.
+	// 필터그래프 파서가 콤마(,)를 필터 구분자로 보기 때문에 force_style 안의 콤마는
+	// 반드시 \, 로 이스케이프해야 한다. 경로의 특수문자도 따옴표 대신 이스케이프한다.
+	if err := checkSubtitlesFilter(); err != nil {
+		return err
+	}
+
+	style := "FontSize=22,FontName=Arial,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Alignment=2"
+	filter := fmt.Sprintf("subtitles=%s:force_style=%s",
+		escapeFilterArg(srtPath),
+		escapeFilterArg(style),
+	)
 
 	cmd := newFFmpegCmd("-y",
 		"-i", videoPath,
@@ -113,6 +92,41 @@ func BurnSubtitles(videoPath, srtPath, outputPath string) error {
 		return fmt.Errorf("자막 굽기 실패: %s", string(out))
 	}
 	return nil
+}
+
+// checkSubtitlesFilter verifies that the ffmpeg build includes the subtitles
+// filter (libass). Many homebrew builds ship without --enable-libass, in which
+// case burning subtitles is impossible and ffmpeg fails with a cryptic
+// "No such filter" / "No option name" error.
+func checkSubtitlesFilter() error {
+	out, err := exec.Command("ffmpeg", "-hide_banner", "-filters").Output()
+	if err != nil {
+		return fmt.Errorf("ffmpeg 필터 목록 확인 실패: %v", err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, " subtitles ") {
+			return nil
+		}
+	}
+	return fmt.Errorf("설치된 ffmpeg에 자막(subtitles) 필터가 없습니다 (libass 미포함).\n" +
+		"  → brew reinstall ffmpeg  로 재설치하거나\n" +
+		"  → --srt-only 옵션으로 SRT 파일만 생성하세요")
+}
+
+// escapeFilterArg escapes characters that have special meaning inside an
+// ffmpeg filtergraph argument (path or option value): backslash, colon,
+// single quote, comma, and the filtergraph separators.
+func escapeFilterArg(s string) string {
+	r := strings.NewReplacer(
+		`\`, `\\`,
+		`:`, `\:`,
+		`'`, `\'`,
+		`,`, `\,`,
+		`[`, `\[`,
+		`]`, `\]`,
+		`;`, `\;`,
+	)
+	return r.Replace(s)
 }
 
 func toSRTTime(seconds float64) string {

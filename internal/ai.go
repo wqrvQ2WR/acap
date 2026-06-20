@@ -1,13 +1,7 @@
 package internal
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
-
-	openai "github.com/sashabaranov/go-openai"
 )
 
 type EditSuggestion struct {
@@ -40,39 +34,11 @@ cut_segments에는 제거할 구간을 넣으세요:
 응답은 반드시 JSON만 반환하세요.`
 
 func GetEditSuggestions(transcript *Transcript) (*EditSuggestion, error) {
-	apiKey := os.Getenv("DEEPSEEK_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("DEEPSEEK_API_KEY 환경변수가 필요합니다")
-	}
-
-	cfg := openai.DefaultConfig(apiKey)
-	cfg.BaseURL = "https://api.deepseek.com/v1"
-	client := openai.NewClientWithConfig(cfg)
-
 	userMsg := fmt.Sprintf("다음 자막을 분석해서 편집 제안을 해주세요:\n\n%s", transcript.FormatForAI())
 
-	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model: "deepseek-chat",
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
-			{Role: openai.ChatMessageRoleUser, Content: userMsg},
-		},
-		Temperature: 0.3,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("AI 분석 실패: %v", err)
-	}
-
-	content := strings.TrimSpace(resp.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
 	var suggestion EditSuggestion
-	if err := json.Unmarshal([]byte(content), &suggestion); err != nil {
-		return nil, fmt.Errorf("AI 응답 파싱 실패: %v\n응답: %s", err, content)
+	if err := callAI(systemPrompt, userMsg, &suggestion); err != nil {
+		return nil, err
 	}
-
 	return &suggestion, nil
 }
