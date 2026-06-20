@@ -13,6 +13,7 @@ AI-powered video editing CLI tool. Transcribes speech with local Whisper and use
 | `acap edit` | AI detects and removes unnecessary segments (silence, fillers, NG takes) |
 | `acap subtitle` | AI suggests subtitle content, position, and style — generates SRT or burns into video |
 | `acap transcribe` | Transcribes speech to text with timestamps |
+| `acap burn` | Add an existing `.srt` file to a video (hard burn-in or soft toggleable track) |
 | `acap api` | Configure the AI provider/model (DeepSeek, OpenAI, or any OpenAI-compatible endpoint) |
 
 | 명령어 | 설명 |
@@ -20,6 +21,7 @@ AI-powered video editing CLI tool. Transcribes speech with local Whisper and use
 | `acap edit` | AI가 불필요한 구간(침묵, 필러, NG)을 찾아 자동으로 잘라냄 |
 | `acap subtitle` | AI가 자막 내용·위치·스타일을 제안하고 SRT 생성 또는 영상에 직접 구워줌 |
 | `acap transcribe` | 음성을 텍스트로 변환해서 타임스탬프와 함께 출력 |
+| `acap burn` | 기존 `.srt` 파일을 영상에 넣음 (직접 굽기 또는 켜고 끌 수 있는 트랙) |
 | `acap api` | 사용할 AI 제공자·모델 설정 (DeepSeek, OpenAI 등 OpenAI 호환 엔드포인트) |
 
 ---
@@ -138,6 +140,29 @@ acap transcribe video.mp4
 
 ---
 
+### burn — Add an Existing SRT / 기존 SRT 넣기
+
+Already have a `.srt` file? Add it to a video without any AI/STT.
+이미 `.srt` 파일이 있다면 AI/STT 없이 바로 영상에 넣을 수 있습니다.
+
+```bash
+acap burn video.mp4 subs.srt              # hard burn-in / 자막을 영상에 직접 굽기
+acap burn video.mp4 subs.srt -o out.mp4
+acap burn video.mp4 subs.srt --soft       # toggleable subtitle track / 켜고 끌 수 있는 트랙
+```
+
+| Mode | Behavior |
+|------|----------|
+| default | Hard burn-in — subtitles are rendered into the pixels, visible everywhere (needs libass) |
+| `--soft` | Muxes subtitles as a toggleable track without re-encoding — instant, but the player must enable subtitles |
+
+| 방식 | 동작 |
+|------|------|
+| 기본 | 픽셀에 직접 구워넣음 — 어디서나 보임 (libass 필요) |
+| `--soft` | 재인코딩 없이 자막 트랙으로 삽입 — 즉시 완료, 단 플레이어에서 자막을 켜야 보임 |
+
+---
+
 ### api — AI Provider Settings / AI 제공자 설정
 
 Choose which AI model powers `edit` and `subtitle`. Any OpenAI-compatible
@@ -177,6 +202,7 @@ acap api --base-url https://my-host/v1 --model my-model --key-env MY_API_KEY
 │   ├── edit.go        # edit command
 │   ├── subtitle.go    # subtitle command
 │   ├── transcribe.go  # transcribe command
+│   ├── burn.go        # burn command (add existing SRT)
 │   └── api.go         # api command (provider/model config)
 └── internal/
     ├── ffmpeg.go      # audio extraction / video editing

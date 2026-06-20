@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -90,6 +91,33 @@ func BurnSubtitles(videoPath, srtPath, outputPath string) error {
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("자막 굽기 실패: %s", string(out))
+	}
+	return nil
+}
+
+// EmbedSubtitlesSoft muxes an SRT as a soft (toggleable) subtitle track without
+// re-encoding the video. Players can turn it on/off. This needs no libass and
+// is near-instant, but the subtitle won't show in players that ignore soft tracks.
+func EmbedSubtitlesSoft(videoPath, srtPath, outputPath string) error {
+	// mp4/mov 컨테이너는 mov_text 코덱, mkv/webm은 srt 코덱을 쓴다.
+	subCodec := "mov_text"
+	switch strings.ToLower(filepath.Ext(outputPath)) {
+	case ".mkv", ".webm":
+		subCodec = "srt"
+	}
+
+	cmd := newFFmpegCmd("-y",
+		"-i", videoPath,
+		"-i", srtPath,
+		"-map", "0",
+		"-map", "1",
+		"-c", "copy",
+		"-c:s", subCodec,
+		"-metadata:s:s:0", "language=kor",
+		outputPath,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("자막 삽입 실패: %s", string(out))
 	}
 	return nil
 }
