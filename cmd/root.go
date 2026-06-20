@@ -26,6 +26,7 @@ var rootCmd = &cobra.Command{
   acap subtitle <영상>    AI가 자막 내용·위치·스타일을 제안하고 영상에 추가합니다
   acap transcribe <영상>  음성을 텍스트로 변환해서 타임스탬프와 함께 출력합니다
   acap burn <영상> <srt>  기존 SRT 자막 파일을 영상에 넣습니다
+  acap music <영상> <음악> 영상에 배경음악을 넣습니다
   acap api                사용할 AI 제공자·모델을 설정합니다 (DeepSeek, OpenAI 등)`,
 }
 
@@ -38,6 +39,7 @@ func init() {
 	rootCmd.AddCommand(transcribeCmd)
 	rootCmd.AddCommand(subtitleCmd)
 	rootCmd.AddCommand(burnCmd)
+	rootCmd.AddCommand(musicCmd)
 	rootCmd.AddCommand(apiCmd)
 
 	cfg := internal.LoadConfig()
