@@ -13,12 +13,14 @@ AI-powered video editing CLI tool. Transcribes speech with local Whisper and use
 | `acap edit` | AI detects and removes unnecessary segments (silence, fillers, NG takes) |
 | `acap subtitle` | AI suggests subtitle content, position, and style — generates SRT or burns into video |
 | `acap transcribe` | Transcribes speech to text with timestamps |
+| `acap api` | Configure the AI provider/model (DeepSeek, OpenAI, or any OpenAI-compatible endpoint) |
 
 | 명령어 | 설명 |
 |--------|------|
 | `acap edit` | AI가 불필요한 구간(침묵, 필러, NG)을 찾아 자동으로 잘라냄 |
 | `acap subtitle` | AI가 자막 내용·위치·스타일을 제안하고 SRT 생성 또는 영상에 직접 구워줌 |
 | `acap transcribe` | 음성을 텍스트로 변환해서 타임스탬프와 함께 출력 |
+| `acap api` | 사용할 AI 제공자·모델 설정 (DeepSeek, OpenAI 등 OpenAI 호환 엔드포인트) |
 
 ---
 
@@ -30,11 +32,19 @@ AI-powered video editing CLI tool. Transcribes speech with local Whisper and use
 # ffmpeg
 brew install ffmpeg
 
+# For `subtitle --burn` you need an ffmpeg built with libass.
+# Homebrew's default ffmpeg omits it, so install ffmpeg-full and put it first in PATH:
+# 자막 굽기(--burn)에는 libass가 포함된 ffmpeg가 필요합니다.
+# Homebrew 기본 ffmpeg에는 빠져 있어 ffmpeg-full을 설치하고 PATH 앞에 둡니다:
+brew install ffmpeg-full
+echo 'export PATH="/opt/homebrew/opt/ffmpeg-full/bin:$PATH"' >> ~/.zshrc
+
 # Whisper (local STT, free / 로컬 STT, 무료)
 pip install openai-whisper
 
 # DeepSeek API key → https://platform.deepseek.com
 export DEEPSEEK_API_KEY="sk-..."
+# Or use another provider via `acap api` (see below) / 다른 제공자는 acap api 로 설정
 ```
 
 ### Build / 빌드
@@ -128,6 +138,35 @@ acap transcribe video.mp4
 
 ---
 
+### api — AI Provider Settings / AI 제공자 설정
+
+Choose which AI model powers `edit` and `subtitle`. Any OpenAI-compatible
+endpoint works. Settings are saved to `~/.config/acap/config.json`.
+
+`edit`·`subtitle`에 사용할 AI 모델을 설정합니다. OpenAI 호환 엔드포인트면 무엇이든
+사용할 수 있고, 설정은 `~/.config/acap/config.json` 에 저장됩니다.
+
+```bash
+acap api                              # show current settings / 현재 설정 보기
+acap api --list                       # list built-in presets / 프리셋 목록
+acap api --provider openai            # switch to OpenAI (gpt-4o) / OpenAI로 전환
+acap api --provider openai --model gpt-4o-mini
+acap api --provider deepseek          # switch back to DeepSeek / DeepSeek로 전환
+
+# Fully custom OpenAI-compatible endpoint / 완전 커스텀 엔드포인트
+acap api --base-url https://my-host/v1 --model my-model --key-env MY_API_KEY
+```
+
+| Preset | Model | API key env var |
+|--------|-------|-----------------|
+| `deepseek` (default) | `deepseek-chat` | `DEEPSEEK_API_KEY` |
+| `openai` | `gpt-4o` | `OPENAI_API_KEY` |
+
+> The API key is read from the environment variable shown above — set it before running `edit`/`subtitle`.
+> API 키는 위 환경변수에서 읽으므로, `edit`/`subtitle` 실행 전에 해당 변수를 설정하세요.
+
+---
+
 ## Project Structure / 구조
 
 ```
@@ -137,12 +176,15 @@ acap transcribe video.mp4
 │   ├── root.go        # CLI entry point
 │   ├── edit.go        # edit command
 │   ├── subtitle.go    # subtitle command
-│   └── transcribe.go  # transcribe command
+│   ├── transcribe.go  # transcribe command
+│   └── api.go         # api command (provider/model config)
 └── internal/
     ├── ffmpeg.go      # audio extraction / video editing
     ├── stt.go         # Whisper STT
-    ├── ai.go          # DeepSeek edit analysis
-    └── subtitle.go    # DeepSeek subtitle generation / SRT / burn
+    ├── config.go      # provider/model config (load/save)
+    ├── aiclient.go    # shared AI call helper
+    ├── ai.go          # edit analysis
+    └── subtitle.go    # subtitle generation / SRT / burn
 ```
 
 ## Tech Stack / 기술 스택
@@ -150,5 +192,5 @@ acap transcribe video.mp4
 - **Go** — CLI build
 - **Cobra** — CLI framework
 - **OpenAI Whisper** — local STT (free)
-- **DeepSeek API** — AI edit & subtitle analysis
+- **DeepSeek / OpenAI** — AI edit & subtitle analysis (any OpenAI-compatible model via `acap api`)
 - **ffmpeg** — audio extraction / video editing / subtitle burning
